@@ -1,0 +1,103 @@
+---
+title: "PML project"
+author: "Patrick Ball"
+date: "Thursday, April 16, 2015"
+output: html_document
+---
+
+### Load packages and the dataset
+
+```{r}
+library(dplyr); library(ggplot2)
+library(caret); library(randomForest)
+if (getwd() != "C:/Users/Patrick/Coursera/pml_project") {
+    setwd("C:/Users/Patrick/Coursera/pml_project")
+}
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+### Clean up the Data
+The sparse nature of many columns and the size of the data are problematic (given my processing capabilities). The following steps resolve these issues:
+
+- Remove time & user information from data
+- Remove columns primarily populated with NA
+- Remove columns primarily populated with "" entries
+
+```{r}
+train <- select(train, -(X:num_window))
+train <- train[,colSums(is.na(train))==0]
+train <- train[,colSums(train[]=="")==0]
+
+test <- select(test, -(X:num_window))
+test <- test[,colSums(is.na(test))==0]
+test <- test[,colSums(test[]=="")==0]
+```
+
+### Fit a CART Model
+
+I want to fit at least two models. The CART model is a decent place to start for predicting a non-binary factor response.
+
+```{r, cache=TRUE}
+cartModel <- train(classe~., method="rpart", data=train)
+cartPred <- predict(cartModel, train[,-53])
+table(cartPred, train$classe)
+```
+
+The table of predictions vs. reality doesn't look very good. There are lots of entries off of the diagonal. The model information below includes the accuracy:
+
+```{r}
+cartModel
+```
+
+An accuracy rate of 0.51 is very low.
+
+### Fit a Random Forest Model
+
+The random forest offers higher accuracy, but may overfit.
+
+```{r, cache=TRUE}
+rfModel <- randomForest(train[,-53], train[,53])
+rfPred <- predict(rfModel, train[,-53])
+table(rfPred, train$classe)
+```
+
+This produced perfect prediction of the training data.
+
+```{r}
+rfModel
+```
+
+The out-of-bag error estimate is 0.32%. That's very strong. Hopefully this hasn't overfitted the data.
+
+### Create Test Data Predictions
+
+First, create and look at the predictions using the random forest model.
+
+```{r}
+rfTest <- predict(rfModel, test[,-53])
+table(rfTest)
+```
+
+Notice that these results are skewed toward A and B results. That may be problematic. Let's check the CART predictions.
+
+```{r}
+cartTest <- predict(cartModel, test[,-53])
+table(cartTest)
+```
+
+These results are even more skewed that the predictions from the random forest model, and look less likely, so stick with the random forest model.
+
+### Create Files
+
+```{r}
+answers <- as.character(rfTest)
+write_files <- function(x) {
+    for(i in 1:length(x)) {
+        filename <- paste0("problem_id_",i,".txt")
+        write.table(x[i], file=filename, quote=FALSE,
+                    row.names=FALSE, col.names=FALSE)
+    }
+}
+write_files(answers)
+```
